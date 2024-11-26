@@ -22,18 +22,12 @@ loss = MSELoss()
 dataset_info = {
     'sigma_data': info.sigma_data
 }
-model_params = {
-    'image_channels': 1,
-    'nb_channels': 8,
-    'num_blocks': 5,
-    'cond_channels': 2
-}
-model = Model(**model_params)
+model = Model()
 model.to(device)
 
 num_epochs = 500
 opt = Adam(model.parameters(), lr=1e-4)
-sched = torch.optim.lr_scheduler.ExponentialLR(opt, gamma=1-1e-3)
+sched = torch.optim.lr_scheduler.ExponentialLR(opt, gamma=0.998)
 
 running_loss = []
 
@@ -52,7 +46,6 @@ def save_snapshot():
             'sched_state_dict': sched.state_dict(),
             'loss': loss.state_dict(),
             'epoch': epoch,
-            'model_params': model_params,
             'dataset_info': dataset_info,
             'running_loss': running_loss
         }, str(snapshot_name))
@@ -65,14 +58,14 @@ def finish(_signal, _frame):
     sys.exit()
 signal.signal(signal.SIGINT, finish)
 
-load_snapshot = sorted(list(Path('./snapshots').glob('*.pth')))[-1]
-# load_snapshot = None
+# load_snapshot = sorted(list(Path('./snapshots').glob('*.pth')))[-1]
+load_snapshot = None
 if load_snapshot:
     print(f"Resuming from checkpoint {load_snapshot}")
     s = torch.load(load_snapshot)
     opt.load_state_dict(s['optimizer_state_dict'])
     loss.load_state_dict(s['loss'])
-    sched.load_state_dict(s['sched_state_dict'])
+    # sched.load_state_dict(s['sched_state_dict'])
     model.load_state_dict(s['model_state_dict'])
     epoch = s['epoch']
     running_loss = s['running_loss'] if 'running_loss' in s else []
