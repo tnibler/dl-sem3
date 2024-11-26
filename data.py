@@ -1,32 +1,40 @@
 from collections import namedtuple
-from typing import Optional, Tuple
+from dataclasses import dataclass
 
+from torch import Tensor
 from torch.utils.data import default_collate, DataLoader, Dataset, random_split
 from torchvision.datasets import CelebA, FashionMNIST
 import torchvision.transforms as T
 
 
-DataInfo = namedtuple('DataInfo', 'image_channels image_size num_classes sigma_data')
-DataLoaders = namedtuple('DataLoaders', 'train valid')
+@dataclass
+class DataInfo: 
+    image_channels: int
+    image_size: int
+    num_classes: int
+    sigma_data: Tensor 
+
+@dataclass
+class DataLoaders:
+    train: Dataset
+    valid: Dataset
 
 
 def load_dataset_and_make_dataloaders(
         dataset_name: str,
-        root_dir: str,
         batch_size: int,
         num_workers: int = 0,
-        pin_memory: bool = False    
-    ) -> Tuple[DataLoaders, DataInfo]:
+        pin_memory: bool = False,
+        root_dir: str='data',
+    ) -> tuple[DataLoaders, DataInfo]:
 
     train_dataset, valid_dataset, data_info = load_dataset(dataset_name, root_dir)
     dl = make_dataloaders(train_dataset, valid_dataset, data_info.num_classes, batch_size, num_workers, pin_memory)
     return dl, data_info
 
 
-def load_dataset(dataset_name='FashionMNIST', root_dir='data') -> Tuple[Dataset, Dataset, DataInfo]:
-
+def load_dataset(dataset_name='FashionMNIST', root_dir='data') -> tuple[Dataset, Dataset, DataInfo]:
     match dataset_name:
-        
         case 'FashionMNIST':
             t = T.Compose([T.ToTensor(), T.Pad(2), T.Normalize(mean=(0.5,), std=(0.5,))])
             train_dataset = FashionMNIST(root_dir, download=True, transform=t)
@@ -53,7 +61,7 @@ def load_dataset(dataset_name='FashionMNIST', root_dir='data') -> Tuple[Dataset,
 def make_dataloaders(
         train_dataset: Dataset,
         valid_dataset: Dataset,
-        num_classes: Optional[int],
+        num_classes: int | None,
         batch_size: int,
         num_workers: int = 0,
         pin_memory: bool = False    
