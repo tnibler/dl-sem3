@@ -1,8 +1,8 @@
 import torch
 from torch import Tensor
 
-def sample_sigma(n: int, loc: float=-1.2, scale: float=1.2, sigma_min: float=2e-3, sigma_max: float=80):
-    return (torch.randn(n) * scale + loc).exp().clip(sigma_min, sigma_max)
+def sample_sigma(n: int, loc: float=-1.2, scale: float=1.2, sigma_min: float=2e-3, sigma_max: float=80, device=None):
+    return (torch.randn(n, device=device) * scale + loc).exp().clip(sigma_min, sigma_max)
 
 def c_in(sigma: Tensor, sigma_data: Tensor):
     return (sigma_data.pow(2) + sigma.pow(2)).pow(-1/2)
