@@ -3,24 +3,25 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class Model(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
-        image_channels = 1
-        nb_channels = 32
-        num_blocks = 6
-        cond_channels = 16
-        self.noise_emb = NoiseEmbedding(cond_channels)
-        self.conv_in = nn.Conv2d(image_channels, nb_channels, kernel_size=3, padding=1)
-        self.blocks = nn.ModuleList([ResidualBlock(nb_channels, cond_channels) for _ in range(num_blocks)])
-        self.conv_out = nn.Conv2d(nb_channels, image_channels, kernel_size=3, padding=1)
+# class Model(nn.Module):
+#     def __init__(self) -> None:
+#         super().__init__()
+#         image_channels = 1
+#         nb_channels = 16
+#         num_blocks = 6
+#         cond_channels = 16
+#         self.noise_emb = NoiseEmbedding(cond_channels)
+#         chans = [image_channels, 4, 8, 16, 32]
+#         self.conv_in = nn.Conv2d(image_channels, nb_channels, kernel_size=3, padding=1)
+#         self.blocks = nn.ModuleList([ResidualBlock(nb_channels, cond_channels) for _ in range(num_blocks)])
+#         self.conv_out = nn.Conv2d(nb_channels, image_channels, kernel_size=3, padding=1)
     
-    def forward(self, noisy_input: torch.Tensor, c_noise: torch.Tensor) -> torch.Tensor:
-        cond = self.noise_emb(c_noise)
-        x = self.conv_in(noisy_input)
-        for block in self.blocks:
-            x = block(x, cond)
-        return self.conv_out(x)
+#     def forward(self, noisy_input: torch.Tensor, c_noise: torch.Tensor) -> torch.Tensor:
+#         cond = self.noise_emb(c_noise)
+#         x = self.conv_in(noisy_input)
+#         for block in self.blocks:
+#             x = block(x, cond)
+#         return self.conv_out(x)
 
 
 class NoiseEmbedding(nn.Module):
@@ -43,7 +44,9 @@ class ConditionalBatchNorm(nn.Module):
         self.var = nn.Linear(cond_channels, nb_channels)
 
     def forward(self, x: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
-        return self.norm(x) * self.var(cond).unsqueeze(2).unsqueeze(3) + self.mean(cond).unsqueeze(2).unsqueeze(3)
+        var = F.relu(self.var(cond))
+        mean = F.relu(self.mean(cond))
+        return self.norm(x) * var.unsqueeze(2).unsqueeze(3) + mean.unsqueeze(2).unsqueeze(3)
 
 class ResidualBlock(nn.Module):
     def __init__(self, nb_channels: int, cond_channels) -> None:
@@ -54,9 +57,55 @@ class ResidualBlock(nn.Module):
         self.conv2 = nn.Conv2d(nb_channels, nb_channels, kernel_size=3, stride=1, padding=1)
     
     def forward(self, x: torch.Tensor, noise_emb: torch.Tensor) -> torch.Tensor:
-        norm1 = self.norm1(x, noise_emb) 
-        norm2 = self.norm2(x, noise_emb) 
-        y = self.conv1(F.relu(norm1))
-        y = self.conv2(F.relu(norm2))
+        y = self.norm1(x, noise_emb) 
+        y = self.conv1(F.relu(y))
+        y = self.norm2(y, noise_emb)
+        y = self.conv2(F.relu(y))
         return x + y
 
+class Model(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        image_channels = 1
+        cond_channels = 16
+        self.noise_emb = NoiseEmbedding(cond_channels)
+        # chans = [16, 32, 32, 64]
+        chans = [16, 16, 32, 32, 32]
+        self.in_conv = nn.Conv2d(image_channels, chans[0], kernel_size=3, stride=1, padding=1)
+        self.down_blocks = nn.ModuleList([
+            UNetBlock(chans[i], chans[i+1], cond_channels)
+            for i in range(len(chans) - 1)
+        ])
+        self.up_blocks = nn.ModuleList([
+            UNetBlock(chans[i]*2, chans[i-1], cond_channels)
+            for i in reversed(range(1, len(chans)))
+        ])
+        self.out_conv = nn.Conv2d(chans[0], image_channels, kernel_size=3, stride=1, padding=1)
+    
+    def forward(self, noisy_input: torch.Tensor, c_noise: torch.Tensor) -> torch.Tensor:
+        cond = self.noise_emb(c_noise)
+        x = self.in_conv(noisy_input)
+        down_results = []
+        for block in self.down_blocks:
+            x = block(x, cond)
+            down_results.append(x)
+        for i, block in enumerate(self.up_blocks):
+            x = block(torch.cat([x, down_results[-i-1]], dim=1), cond)
+        return self.out_conv(x) 
+
+
+class UNetBlock(nn.Module):
+    def __init__(self, in_c, out_c, cond_c):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_c, out_c, kernel_size=3, stride=1, padding=1)
+        self.norm1 = ConditionalBatchNorm(out_c, cond_c)
+        self.conv2 = nn.Conv2d(out_c, out_c, kernel_size=3, stride=1, padding=1)
+        self.norm2 = ConditionalBatchNorm(out_c, cond_c)
+        self.res_adapt = nn.Conv2d(in_c, out_c, kernel_size=1, stride=1)
+    
+    def forward(self, x, cond):
+        y = self.conv1(x)
+        y = self.norm1(F.relu(y), cond)
+        y = self.conv2(y)
+        y = self.norm2(F.relu(y), cond)
+        return y + self.res_adapt(x)
