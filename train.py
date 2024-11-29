@@ -2,7 +2,7 @@ from torch.nn import MSELoss
 import data
 import torch
 from torch import Tensor
-from model import Model
+from model import *
 from torch.optim.adam import Adam
 import datetime
 from pathlib import Path
@@ -22,7 +22,11 @@ loss = MSELoss()
 dataset_info = {
     'sigma_data': info.sigma_data
 }
-model = Model()
+
+# model = SimpleUnetNoDownsample([16, 32, 32, 64])
+# model = SimpleUnetNoDownsample([16, 16, 32, 32, 32])
+# model = SimpleUnetClassCondNoDownsample([32, 32, 32, 64], num_classes=info.num_classes, spatial_encoding=True, device=device)
+model = SimpleUnetNoDownsample([16, 32, 32, 64], spatial_encoding=True)
 model.to(device)
 
 num_epochs = 500
@@ -37,8 +41,11 @@ save_increment = 5
 
 epoch = 0
 
-def save_snapshot():
-    snapshot_name = snapshot_dir.joinpath(Path('model-' + datetime.datetime.now().isoformat() + '.pth'))
+last_filename = None
+def save_snapshot(overwrite=False):
+    filename = last_filename if overwrite else f'{model.name}-{datetime.datetime.now().isoformat()}.pth'
+    snapshot_name = snapshot_dir.joinpath(Path(filename))
+    last_filename = filename
     torch.save(
         {
             'model_state_dict': model.state_dict(),
@@ -58,8 +65,10 @@ def finish(_signal, _frame):
     sys.exit()
 signal.signal(signal.SIGINT, finish)
 
-# load_snapshot = sorted(list(Path('./snapshots').glob('*.pth')))[-1]
-load_snapshot = None
+if len(sys.argv) > 1 and sys.argv[1] == 'resume':
+    load_snapshot = sorted(list(Path('./snapshots').glob('*.pth')))[-1]
+else:
+    load_snapshot = None
 if load_snapshot:
     print(f"Resuming from checkpoint {load_snapshot}")
     s = torch.load(load_snapshot)
@@ -72,7 +81,7 @@ if load_snapshot:
 
 while epoch < num_epochs:
     y: Tensor
-    for y, _lbl in loaders.train:
+    for y, lbl in loaders.train:
         y.to(device)
         opt.zero_grad()
         bs = y.shape[0]
@@ -83,6 +92,7 @@ while epoch < num_epochs:
         cnoise = c_noise(sigma, info.sigma_data)
         x = y + sigma * torch.randn((bs, 1, width, height))
 
+        # pred = model((cin * x).to(device), cnoise.squeeze().to(device), lbl.to(device)) 
         pred = model((cin * x).to(device), cnoise.squeeze().to(device)) 
         target = (y - cskip * x) / cout
 
