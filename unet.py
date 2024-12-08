@@ -18,17 +18,14 @@ class UNet(nn.Module):
             class_emb_dim = 0
             self.class_emb = None
 
-        unet_in_c = 64
+        unet_in_c = 32
         self.inconv = nn.Conv2d(img_c + class_emb_dim, unet_in_c, kernel_size=3, stride=1, padding=1)
-        chans = [unet_in_c, unet_in_c * 4, unet_in_c * 8, unet_in_c * 8, unet_in_c * 8, unet_in_c * 16]
+        chans = [unet_in_c, unet_in_c * 4, unet_in_c * 8, unet_in_c * 8, unet_in_c * 16, unet_in_c * 16]
         self.down_blocks = nn.ModuleList([
             DownBlock(chans[i], chans[i+1], chans[i+1], noise_c + class_emb_dim)
             for i in range(len(chans) - 1)
         ])
-        self.conv_between1 = nn.Conv2d(chans[-1], 1024, kernel_size=3, padding=1)
-        self.bn_between1 = ConditionalBatchNorm(1024, noise_c + class_emb_dim)
-        self.conv_between2 = nn.Conv2d(1024, chans[-1], kernel_size=3, padding=1)
-        self.bn_between2 = ConditionalBatchNorm(chans[-1], noise_c + class_emb_dim)
+        self.between = ResBlock(chans[-1], chans[-1], chans[-1], noise_c + class_emb_dim)
         self.up_blocks = nn.ModuleList([
             UpBlock(
                 chans[i] if i == len(chans) - 1 else 2 * chans[i],
@@ -55,10 +52,7 @@ class UNet(nn.Module):
             y = block(y, conds)
             down_out.append(y.clone())
         y = self.down_blocks[-1](y, conds)
-        y = self.conv_between1(y)
-        y = self.bn_between1(F.relu(y), conds)
-        y = self.conv_between2(y)
-        y = self.bn_between2(F.relu(y), conds)
+        y = self.between(y, conds)
         y = self.up_blocks[0](y, conds)
         for block, skip in zip(self.up_blocks[1:], reversed(down_out)):
             y = block(torch.cat([y, skip], dim=1), conds)
@@ -77,20 +71,24 @@ class ResBlock(nn.Module):
     def __init__(self, in_c, inter_c, out_c, cond_c):
         super().__init__()
         self.conv1 = nn.Conv2d(in_c, inter_c, kernel_size=3, padding=1)
-        self.bn1 = ConditionalBatchNorm(inter_c, cond_c)
+        self.bn1 = nn.GroupNorm(16, inter_c)
+        self.t_emb = nn.Linear(cond_c, inter_c)
         self.conv2 = nn.Conv2d(inter_c, out_c, kernel_size=3, padding=1)
-        self.bn2 = ConditionalBatchNorm(out_c, cond_c)
+        self.bn2 = nn.GroupNorm(16, out_c)
         if in_c == out_c:
             self.res_adapt = nn.Identity()
         else:
             self.res_adapt = nn.Conv2d(in_c, out_c, kernel_size=1)
     
     def forward(self, x, c):
+        bs = x.shape[0]
         res = self.res_adapt(x)
         y = self.conv1(x)
-        y = self.bn1(F.relu(y), c)
+        t_emb = self.t_emb(c)
+        y += t_emb.reshape(bs, t_emb.shape[1], 1, 1)
+        y = self.bn1(F.relu(y))
         y = self.conv2(y)
-        y = self.bn2(F.relu(y), c)
+        y = self.bn2(F.relu(y))
         return y + res
 
 class DownBlock(nn.Module):
