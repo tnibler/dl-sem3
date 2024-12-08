@@ -14,11 +14,11 @@ class UNet(nn.Module):
         self.noise_emb = NoiseEmbedding(noise_c)
         self.class_emb = nn.Embedding(num_classes, class_emb_dim)
 
-        unet_in_c = 16
+        unet_in_c = 32
         self.inconv = nn.Conv2d(img_c + class_emb_dim, unet_in_c, kernel_size=3, stride=1, padding=1)
         chans = [unet_in_c, unet_in_c * 2, unet_in_c * 4, unet_in_c * 8, unet_in_c * 8, unet_in_c * 16]
         self.down_blocks = nn.ModuleList([
-            DownBlock(chans[i], chans[i+1], chans[i+1], noise_c)
+            DownBlock(chans[i], chans[i], chans[i+1], noise_c)
             for i in range(len(chans) - 1)
         ])
         self.up_blocks = nn.ModuleList([
@@ -48,9 +48,9 @@ class UNet(nn.Module):
         y = self.outconv(torch.cat([y, res], dim=1))
         return y
 
-class DownBlock(nn.Module):
+class ResBlock(nn.Module):
     """
-    Sequence of MaxPool -> (Conv2D -> BatchNorm) -> (Conv2D -> BatchNorm) with ReLU
+    Sequence of (Conv2D -> BatchNorm) -> (Conv2D -> BatchNorm) with ReLU and residula connection
 
     in_c: number of input channels
     mid_c: number of output channels for first conv
@@ -59,38 +59,6 @@ class DownBlock(nn.Module):
     """
     def __init__(self, in_c, inter_c, out_c, cond_c):
         super().__init__()
-        self.conv1 = nn.Conv2d(in_c, inter_c, kernel_size=3, padding=1)
-        self.bn1 = ConditionalBatchNorm(inter_c, cond_c)
-        self.conv2 = nn.Conv2d(inter_c, out_c, kernel_size=3, padding=1)
-        self.bn2 = ConditionalBatchNorm(out_c, cond_c)
-        self.pool = nn.MaxPool2d(2)
-        # if in_c == out_c:
-        #     self.res_adapt = nn.Identity()
-        # else:
-        #     self.res_adapt = nn.Conv2d(in_c, out_c, kernel_size=1)
-    
-    def forward(self, x, c):
-        # res = self.res_adapt(y)
-        y = self.conv1(x)
-        y = self.bn1(F.relu(y), c)
-        y = self.conv2(y)
-        y = self.bn2(F.relu(y), c)
-        y = self.pool(y)
-        return y 
-
-class UpBlock(nn.Module):
-    """
-    Sequence of ConvTranspose -> (Conv2D -> BatchNorm) -> (Conv2D -> BatchNorm)
-
-    in_c: number of input channels
-    mid_c: number of output channels for first conv
-    out_c: number of output channels
-    cond_c: number of channels of noise conditioning
-    """
-    def __init__(self, in_c, inter_c, out_c, cond_c):
-        super().__init__()
-        self.convt = nn.ConvTranspose2d(in_c, in_c, kernel_size=2, stride=2)
-        # self.convt = nn.UpsamplingBilinear2d(scale_factor=2)
         self.conv1 = nn.Conv2d(in_c, inter_c, kernel_size=3, padding=1)
         self.bn1 = ConditionalBatchNorm(inter_c, cond_c)
         self.conv2 = nn.Conv2d(inter_c, out_c, kernel_size=3, padding=1)
@@ -101,10 +69,35 @@ class UpBlock(nn.Module):
             self.res_adapt = nn.Conv2d(in_c, out_c, kernel_size=1)
     
     def forward(self, x, c):
-        y = self.convt(x)
-        res = self.res_adapt(y)
-        y = self.conv1(y)
+        res = self.res_adapt(x)
+        y = self.conv1(x)
         y = self.bn1(F.relu(y), c)
         y = self.conv2(y)
         y = self.bn2(F.relu(y), c)
         return y + res
+
+class DownBlock(nn.Module):
+    def __init__(self, in_c, inter_c, out_c, cond_c):
+        super().__init__()
+        self.res_block = ResBlock(in_c, inter_c, inter_c, cond_c)
+        self.down = nn.MaxPool2d(2)
+        self.outconv = nn.Conv2d(inter_c, out_c, kernel_size=3, stride=1, padding=1)
+    
+    def forward(self, x, c):
+        y = self.res_block(x, c)
+        y = self.down(y)
+        y = self.outconv(y)
+        return y
+
+class UpBlock(nn.Module):
+    def __init__(self, in_c, inter_c, out_c, cond_c):
+        super().__init__()
+        self.inconv = nn.Conv2d(in_c, inter_c, kernel_size=3, stride=1, padding=1)
+        self.convt = nn.ConvTranspose2d(inter_c, inter_c, kernel_size=2, stride=2)
+        self.res_block = ResBlock(inter_c, inter_c, out_c, cond_c)
+    
+    def forward(self, x, c):
+        y = self.inconv(x)
+        y = self.convt(y)
+        y = self.res_block(y, c)
+        return y
