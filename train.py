@@ -17,7 +17,8 @@ device = 'cuda'
 
 batch_size = 128
 width, height = 32, 32
-loaders, info = data.load_dataset_and_make_dataloaders('FashionMNIST', batch_size, num_workers=4)
+# loaders, info = data.load_dataset_and_make_dataloaders('FashionMNIST', batch_size, num_workers=4)
+loaders, info = data.load_dataset_and_make_dataloaders('CelebA', batch_size, num_workers=4)
 
 loss = MSELoss()
 

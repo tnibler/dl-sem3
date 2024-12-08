@@ -39,3 +39,34 @@ A 4-dimensional class embedding is trained and concatenated with the input image
 ![](images/process.png)
 
 ![](images/process2.png)
+
+# Unet
+
+
+Class conditioning only concatenated to input once: only generates two classes regardless of what is asked for.
+
+Adding it as an input to the conditional batchnorm improves things.
+
+Good bugs:
+
+ - tensors are CoW, so you need to copy them to keep residuals
+ - Pooling as first step in a Unet block did not work, as you're throwing away a lot of information before any convolutios
+
+I don't know what was happening here, but some Unet setups worked okay for the first few epochs, but then only ever produced the same blob regardless of sampling or class label:
+
+Epoch 5:
+![](images/weird_unet/epoch5-class0.png)
+![](images/weird_unet/epoch5-class3.png)
+
+Epoch 10:
+![](images/weird_unet/epoch10-class0.png)
+![](images/weird_unet/epoch10-class3.png)
+
+Epoch 15:
+![](images/weird_unet/epoch15-class3.png)
+
+Epoch 20:
+![](images/weird_unet/epoch20-class3.png)
+
+Epoch 25 and after:
+![](images/weird_unet/epoch25-class3.png)
