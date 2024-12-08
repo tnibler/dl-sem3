@@ -2,7 +2,6 @@ from torch.nn import MSELoss
 import data
 import torch
 from torch import Tensor
-from model import *
 from torch.optim.adam import Adam
 import datetime
 from pathlib import Path
@@ -11,9 +10,12 @@ import signal
 import sys
 import matplotlib.pyplot as plt
 
+from model import *
+from unet import UNet
+
 device = 'cuda'
 
-batch_size = 64
+batch_size = 128
 width, height = 32, 32
 loaders, info = data.load_dataset_and_make_dataloaders('FashionMNIST', batch_size, num_workers=4)
 
@@ -26,8 +28,10 @@ dataset_info = {
 # model = SimpleUnetNoDownsample([16, 32, 32, 64])
 # model = SimpleUnetNoDownsample([16, 16, 32, 32, 32])
 # model = SimpleUnetClassCondNoDownsample([32, 32, 32, 64], num_classes=info.num_classes, spatial_encoding=True, device=device)
-model = SimpleUnetNoDownsample([16, 32, 32, 64], spatial_encoding=True)
+# model = SimpleResnet([16, 32, 32, 64], spatial_encoding=True)
+model = UNet(num_classes=info.num_classes)
 model.to(device)
+model.train()
 
 num_epochs = 500
 opt = Adam(model.parameters(), lr=1e-3)
@@ -92,8 +96,8 @@ while epoch < num_epochs:
         cnoise = c_noise(sigma, info.sigma_data)
         x = y + sigma * torch.randn((bs, 1, width, height))
 
-        # pred = model((cin * x).to(device), cnoise.squeeze().to(device), lbl.to(device)) 
-        pred = model((cin * x).to(device), cnoise.squeeze().to(device)) 
+        pred = model((cin * x).to(device), cnoise.squeeze().to(device), lbl.to(device)) 
+        # pred = model((cin * x).to(device), cnoise.squeeze().to(device)) 
         target = (y - cskip * x) / cout
 
         l: Tensor = loss(pred, target.to(device))

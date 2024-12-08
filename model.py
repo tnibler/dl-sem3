@@ -75,7 +75,7 @@ class ResidualBlock(nn.Module):
         y = self.conv2(F.relu(y))
         return x + y
 
-class SimpleUnetNoDownsample(nn.Module):
+class SimpleResnet(nn.Module):
     def __init__(self, chans, spatial_encoding=False, device=None) -> None:
         super().__init__()
         image_channels = 1
@@ -96,11 +96,11 @@ class SimpleUnetNoDownsample(nn.Module):
         self.name = f'SimpleUnetNoDownsample{"-".join(map(str, chans))}'
         self.in_conv = nn.Conv2d(in_channels, chans[0], kernel_size=3, stride=1, padding=1)
         self.down_blocks = nn.ModuleList([
-            UNetBlock(chans[i], chans[i+1], cond_channels)
+            ResBlock(chans[i], chans[i+1], cond_channels)
             for i in range(len(chans) - 1)
         ])
         self.up_blocks = nn.ModuleList([
-            UNetBlock(chans[i]*2, chans[i-1], cond_channels)
+            ResBlock(chans[i]*2, chans[i-1], cond_channels)
             for i in reversed(range(1, len(chans)))
         ])
         self.out_conv = nn.Conv2d(chans[0], image_channels, kernel_size=3, stride=1, padding=1)
@@ -118,7 +118,7 @@ class SimpleUnetNoDownsample(nn.Module):
             x = block(torch.cat([x, down_results[-i-1]], dim=1), cond)
         return self.out_conv(x) 
 
-class UNetBlock(nn.Module):
+class ResBlock(nn.Module):
     def __init__(self, in_c, out_c, cond_c):
         super().__init__()
         self.conv1 = nn.Conv2d(in_c, out_c, kernel_size=3, stride=1, padding=1)
@@ -134,12 +134,7 @@ class UNetBlock(nn.Module):
         y = self.norm2(F.relu(y), cond)
         return y + self.res_adapt(x)
 
-# class Unet(nn.Module):
-#     def __init__(self):
-#         super().__init__()
-#         c1 = 8
-
-class SimpleUnetClassCondNoDownsample(nn.Module):
+class SimpleResnetClassCond(nn.Module):
     def __init__(self, chans, num_classes, spatial_encoding=False, device=None) -> None:
         super().__init__()
         image_channels = 1
@@ -158,14 +153,14 @@ class SimpleUnetClassCondNoDownsample(nn.Module):
         self.class_emb = nn.Embedding(num_classes, 4)
         cond_channels = 16
         self.noise_emb = NoiseEmbedding(cond_channels)
-        self.name = f'SimpleUnetClassCondNoDownsample{"-spat-" if spatial_encoding else ""}{"-".join(map(str, chans))}'
+        self.name = f'SimpleResnetClassCond{"-spat-" if spatial_encoding else ""}{"-".join(map(str, chans))}'
         self.in_conv = nn.Conv2d(in_channels + self.class_emb.embedding_dim, chans[0], kernel_size=3, stride=1, padding=1)
         self.down_blocks = nn.ModuleList([
-            UNetBlock(chans[i], chans[i+1], cond_channels)
+            ResBlock(chans[i], chans[i+1], cond_channels)
             for i in range(len(chans) - 1)
         ])
         self.up_blocks = nn.ModuleList([
-            UNetBlock(chans[i]*2, chans[i-1], cond_channels)
+            ResBlock(chans[i]*2, chans[i-1], cond_channels)
             for i in reversed(range(1, len(chans)))
         ])
         self.out_conv = nn.Conv2d(chans[0], image_channels, kernel_size=3, stride=1, padding=1)
