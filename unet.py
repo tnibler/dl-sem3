@@ -5,14 +5,18 @@ import torch.nn.functional as F
 from model import ConditionalBatchNorm, NoiseEmbedding
 
 class UNet(nn.Module):
-    def __init__(self, num_classes: int):
+    def __init__(self, num_classes: int|None):
         super().__init__()
         self.name = 'UNet'
         img_c = 1
         noise_c = 32
-        class_emb_dim = 16
         self.noise_emb = NoiseEmbedding(noise_c)
-        self.class_emb = nn.Embedding(num_classes, class_emb_dim)
+        if num_classes is not None:
+            self.class_emb = nn.Embedding(num_classes, class_emb_dim)
+            class_emb_dim = 16
+        else:
+            class_emb_dim = 0
+            self.class_emb = None
 
         unet_in_c = 32
         self.inconv = nn.Conv2d(img_c + class_emb_dim, unet_in_c, kernel_size=3, stride=1, padding=1)
@@ -32,13 +36,15 @@ class UNet(nn.Module):
     def forward(self, input: torch.Tensor, noise_cond: torch.Tensor, lbl: torch.Tensor):
         assert len(input.shape) == 4, f"shape must be BxCxHxW, got {input.shape}"
         bs, _, h, w = input.shape
-        class_emb = self.class_emb(lbl)
         noise_cond = self.noise_emb(noise_cond)
+        if self.class_emb:
+            class_emb = self.class_emb(lbl)
+            conds = torch.cat([noise_cond, class_emb], dim=1)
+            class_emb = class_emb.reshape(bs, class_emb.shape[1], 1, 1).expand(bs, class_emb.shape[1], h, w)
+        else:
+            conds = noise_cond
 
-        conds = torch.cat([noise_cond, class_emb], dim=1)
-
-        class_emb = class_emb.reshape(bs, class_emb.shape[1], 1, 1).expand(bs, class_emb.shape[1], h, w)
-        y = self.inconv(torch.cat([input, class_emb], dim=1))
+        y = self.inconv(torch.cat([input, class_emb], dim=1) if self.class_emb else input)
         res = y.clone()
         down_out = []
         for block in self.down_blocks[:-1]:
