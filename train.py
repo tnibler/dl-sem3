@@ -19,7 +19,7 @@ if __name__ == '__main__':
     dataset = 'CelebA'
 
     if dataset == 'CelebA':
-        batch_size = 64
+        batch_size = 32
         width, height = 64, 64
         save_increment = 1
     else:
@@ -120,6 +120,9 @@ if __name__ == '__main__':
             running_loss.append(l.item())
             if i % 50 == 0:
                 print(l.item())
+            if i % 500 == 0:
+                save_snapshot()
+                print('Saving checkpoint')
             # adjust_lr_every = 300
             # if i % adjust_lr_every == 0:
             #     n = 30

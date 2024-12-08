@@ -18,13 +18,17 @@ class UNet(nn.Module):
             class_emb_dim = 0
             self.class_emb = None
 
-        unet_in_c = 32
+        unet_in_c = 64
         self.inconv = nn.Conv2d(img_c + class_emb_dim, unet_in_c, kernel_size=3, stride=1, padding=1)
-        chans = [unet_in_c, unet_in_c * 2, unet_in_c * 4, unet_in_c * 8, unet_in_c * 8, unet_in_c * 16]
+        chans = [unet_in_c, unet_in_c * 4, unet_in_c * 8, unet_in_c * 8, unet_in_c * 8, unet_in_c * 16]
         self.down_blocks = nn.ModuleList([
-            DownBlock(chans[i], chans[i], chans[i+1], noise_c + class_emb_dim)
+            DownBlock(chans[i], chans[i+1], chans[i+1], noise_c + class_emb_dim)
             for i in range(len(chans) - 1)
         ])
+        self.conv_between1 = nn.Conv2d(chans[-1], 1024, kernel_size=3, padding=1)
+        self.bn_between1 = ConditionalBatchNorm(1024, noise_c + class_emb_dim)
+        self.conv_between2 = nn.Conv2d(1024, chans[-1], kernel_size=3, padding=1)
+        self.bn_between2 = ConditionalBatchNorm(chans[-1], noise_c + class_emb_dim)
         self.up_blocks = nn.ModuleList([
             UpBlock(
                 chans[i] if i == len(chans) - 1 else 2 * chans[i],
@@ -33,11 +37,11 @@ class UNet(nn.Module):
         ])
         self.outconv = nn.Conv2d(2*chans[0], img_c, kernel_size=3, stride=1, padding=1)
     
-    def forward(self, input: torch.Tensor, noise_cond: torch.Tensor, lbl: torch.Tensor):
+    def forward(self, input: torch.Tensor, noise_cond: torch.Tensor, lbl: torch.Tensor | None):
         assert len(input.shape) == 4, f"shape must be BxCxHxW, got {input.shape}"
         bs, _, h, w = input.shape
         noise_cond = self.noise_emb(noise_cond)
-        if self.class_emb:
+        if self.class_emb and lbl is not None:
             class_emb = self.class_emb(lbl)
             conds = torch.cat([noise_cond, class_emb], dim=1)
             class_emb = class_emb.reshape(bs, class_emb.shape[1], 1, 1).expand(bs, class_emb.shape[1], h, w)
@@ -51,6 +55,10 @@ class UNet(nn.Module):
             y = block(y, conds)
             down_out.append(y.clone())
         y = self.down_blocks[-1](y, conds)
+        y = self.conv_between1(y)
+        y = self.bn_between1(F.relu(y), conds)
+        y = self.conv_between2(y)
+        y = self.bn_between2(F.relu(y), conds)
         y = self.up_blocks[0](y, conds)
         for block, skip in zip(self.up_blocks[1:], reversed(down_out)):
             y = block(torch.cat([y, skip], dim=1), conds)
