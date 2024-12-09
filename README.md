@@ -82,14 +82,38 @@ Epoch 25 and after:
 
 First, I basically tried random variations of resibual block structures, skip connections, number of channels etc.
 
-Sometimes, images would turn out very good, but only every generate one class, regardless of input.
+Sometimes, images would turn out very good, but only ever generate one class, regardless of input.
 
 ![](images/unet_only_likes_sweaters.png)
 
+What worked in the end was changing how the class conditioning was integrated into the model.
+Instead of the conditional BatchNorm (the only place where the class actually intervened),
+every residual block trains its own class embedding layer, whose output gets added to the feature map inbetween two convolutions.
+The previously conditional BatchNorm was replaced with a GroupNorm, though I don't think that was key here.
+
+Final model size: 10M parameters.
+
+![](images/unet_good.png)
+
+![](images/unet_good2.png)
+
+![](images/unet_good3.png)
+
+![](images/unet_good4.png)
+
 ## CelebA
 
-45M parameter model. GroupNorm and timestep embedding
+45M parameter model. GroupNorm and timestep embedding. Trained for ~4 epochs, 90 minutes.
 
 ![](images/celeba_good.png)
 
 ![](images/celeba_good2.png)
+
+# FashionMNIST FID scores
+
+| Model | FID score|
+|-|-|
+| Simple ResNet, no noise/class conditioning | 161 |
+| ResNet, with noise conditioning |  102 |
+| ResNet, with class+noise conditioning | 68 |
+| UNet | 115 |

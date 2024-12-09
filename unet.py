@@ -1,26 +1,44 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+from dataclasses import dataclass
 from model import ConditionalBatchNorm, NoiseEmbedding
 
+@dataclass
+class UNetOpts:
+    # number of channels after the input convolutions
+    unet_in_c: int
+    # channel multiplier at each U level
+    chans: list[int]
+    # noise channels
+    noise_c: int
+    class_emb_dim: int | None
+
+fashionmnist_opts = UNetOpts(unet_in_c=16,
+                             chans=[2, 4, 8, 16, 16],
+                             noise_c=16,
+                             class_emb_dim=8)
+celeba_opts = UNetOpts(unet_in_c=32, 
+                       chans=[4,  8,  8,  16,  16],
+                       noise_c=32,
+                       class_emb_dim=None)
+
 class UNet(nn.Module):
-    def __init__(self, num_classes: int|None):
+    def __init__(self, opts: UNetOpts, num_classes: int|None):
         super().__init__()
         self.name = 'UNet'
         img_c = 1
-        noise_c = 32
+        noise_c = opts.noise_c
         self.noise_emb = NoiseEmbedding(noise_c)
         if num_classes is not None:
-            self.class_emb = nn.Embedding(num_classes, class_emb_dim)
-            class_emb_dim = 16
+            self.class_emb = nn.Embedding(num_classes, opts.class_emb_dim)
+            class_emb_dim = opts.class_emb_dim
         else:
             class_emb_dim = 0
             self.class_emb = None
 
-        unet_in_c = 32
-        self.inconv = nn.Conv2d(img_c + class_emb_dim, unet_in_c, kernel_size=3, stride=1, padding=1)
-        chans = [unet_in_c, unet_in_c * 4, unet_in_c * 8, unet_in_c * 8, unet_in_c * 16, unet_in_c * 16]
+        self.inconv = nn.Conv2d(img_c + class_emb_dim, opts.unet_in_c, kernel_size=3, stride=1, padding=1)
+        chans = [opts.unet_in_c] + list(map(lambda m: m * opts.unet_in_c, opts.chans))
         self.down_blocks = nn.ModuleList([
             DownBlock(chans[i], chans[i+1], chans[i+1], noise_c + class_emb_dim)
             for i in range(len(chans) - 1)

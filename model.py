@@ -58,7 +58,7 @@ class SimpleResnet(nn.Module):
 
         cond_channels = 16
         self.noise_emb = NoiseEmbedding(cond_channels)
-        self.name = f'SimpleUnetNoDownsample{"-".join(map(str, chans))}'
+        self.name = f'SimpleResnet{"-".join(map(str, chans))}'
         self.in_conv = nn.Conv2d(in_channels, chans[0], kernel_size=3, stride=1, padding=1)
         self.down_blocks = nn.ModuleList([
             ResBlock(chans[i], chans[i+1], cond_channels)
