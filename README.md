@@ -1,3 +1,11 @@
+# Relevant files
+
+ - `simplest.py`: resnet included with the instructions
+ - `model.py`: better reset with noise and class conditioning
+ - `unet.py`: UNet with class conditioning
+ - `sample.ipynb`: sampling loop, 
+ - `train.py`: very basic training loop
+
 # Resnet FashionMNIST
 
 All models are trained for ~20 epochs with learning rates from $10^{-3}$ to $10^{-4}$. Most runs used a scheduler that halves the learning rates after three epochs without loss improvement.

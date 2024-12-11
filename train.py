@@ -45,6 +45,7 @@ if __name__ == '__main__':
 
     num_epochs = 500
     opt = Adam(model.parameters(), lr=1e-4)
+    # the scheduler did not really work. Just setting the constant lr was fine.
     # sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, patience=3, factor=0.5)
 
     running_loss = []
@@ -94,6 +95,7 @@ if __name__ == '__main__':
     #     running_loss = s['running_loss'] if 'running_loss' in s else []
 
     gray = Grayscale()
+    # downscale training images to 64x64
     resize = Resize((width, height))
 
     while epoch < num_epochs:

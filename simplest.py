@@ -3,6 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class SimplestModel(nn.Module):
+    """
+    ResNet as given in the instructions.
+    """
     def __init__(self) -> None:
         super().__init__()
         image_channels = 1
